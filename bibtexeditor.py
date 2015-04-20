@@ -7,7 +7,13 @@ import gtk
 import logging
 import pango
 import gobject
-import bibtexparser
+import subprocess, os, sys
+
+try:
+	import bibtexparser
+	from bibtexparser.bparser import BibTexParser
+except:
+	bibtexparser = None
 
 from zim.plugins import PluginClass, extends, WindowExtension
 from zim.actions import action
@@ -42,7 +48,8 @@ auto-formatting typographic characters.
 	
 	@classmethod
 	def check_dependencies(klass):
-		return True, []
+		check = not bibtexparser is None
+		return check, [('bibtexparser', check, True)]
 
 	def __init__(self, config=None):
 		PluginClass.__init__(self, config)
@@ -106,7 +113,7 @@ class MainWindowExtension(WindowExtension):
 		if not lang:
 			return # dialog cancelled
 		else:
-			obj = BibTexBibObject({'type': OBJECT_TYPE_BIB, 'name': dialog.bibName, 'path': dialog.bibPath}, '', self.window.pageview, self.window.ui) # XXX
+			obj = BibTexBibObject({'type': OBJECT_TYPE_BIB, 'name': dialog.bibName, 'path': dialog.bibPath, 'filedir': dialog.fileDir}, '', self.window.pageview, self.window.ui) # XXX
 			pageview = self.window.pageview
 			pageview.insert_object(pageview.view.get_buffer(), obj)
 
@@ -136,18 +143,23 @@ class InsertBibTexBibDialog(Dialog):
 		self.init_dialog()
 			
 	def init_dialog(self, table=None):
-		table = gtk.Table(rows=2,columns=2)
+		table = gtk.Table(rows=3,columns=2)
 		table.attach(gtk.Label("Name"), 0, 1, 0, 1)
 		self.bibtexNameEntry = gtk.Entry()
 		table.attach(self.bibtexNameEntry, 1, 2, 0, 1)
 		table.attach(gtk.Label("Path"), 0, 1, 1, 2)
 		self.bibtexPathEntry = gtk.Entry()
 		table.attach(self.bibtexPathEntry, 1, 2, 1, 2)
+		
+		table.attach(gtk.Label("File Directory"), 0, 1, 2, 3)
+		self.fileDirEntry = gtk.Entry()
+		table.attach(self.fileDirEntry, 1, 2, 2, 3)
 		self.vbox.pack_start(table)
 
 	def do_response_ok(self):
 		self.bibName = self.bibtexNameEntry.get_text()
 		self.bibPath = self.bibtexPathEntry.get_text()
+		self.fileDir = self.fileDirEntry.get_text()
 		self.result = 1
 		return True
 		
@@ -175,7 +187,7 @@ class InsertBibTexRefDialog(Dialog):
 			
 	def init_dialog(self, table=None):
 		table = gtk.Table(rows=2,columns=2)
-		table.attach(gtk.Label("Bibliography"), 0, 1, 0, 1)
+		table.attach(gtk.Label("Bibliography"), 0, 1, 0, 1, xoptions=gtk.FILL, yoptions=gtk.FILL)
 		
 		# get all available bibliographies in this pageview
 		self.bibStore = gtk.ListStore(str, BibTexBibObject)
@@ -188,15 +200,36 @@ class InsertBibTexRefDialog(Dialog):
 		self.bibliography.add_attribute(cell, 'text', 0)
 		self.bibliography.connect('changed',self.on_bib_changed)
 		
-		table.attach(self.bibliography, 1, 2, 0, 1)
-		table.attach(gtk.Label("Entry"), 0, 1, 1, 2)
+		table.attach(self.bibliography, 1, 2, 0, 1, xoptions=gtk.FILL, yoptions=gtk.FILL)
+		table.attach(gtk.Label("Entry"), 0, 1, 1, 2, xoptions=gtk.FILL)
 		
-		self.entryStore = gtk.ListStore(str)
-		self.bibliographyEntry = gtk.ComboBox(self.entryStore)
-		cell = gtk.CellRendererText()
-		self.bibliographyEntry.pack_start(cell, True)
-		self.bibliographyEntry.add_attribute(cell, 'text', 0)
-		table.attach(self.bibliographyEntry, 1, 2, 1, 2)
+		self.entryStore = gtk.ListStore(str, str, str)
+		self.bibliographyEntry = gtk.TreeView(self.entryStore) #gtk.ComboBox(self.entryStore)
+		
+		column = gtk.TreeViewColumn()
+		cellrender = gtk.CellRendererText()
+		#cellrender.props.wrap_width = 100
+		#cellrender.props.wrap_mode = gtk.WRAP_WORD
+		column.pack_start(cellrender, True)
+		column.add_attribute(cellrender, 'text', 0)
+		self.bibliographyEntry.append_column(column)
+		cellrender = gtk.CellRendererText()
+		cellrender.props.wrap_width = 300
+		cellrender.props.wrap_mode = gtk.WRAP_WORD
+		column.pack_start(cellrender, True)
+		column.add_attribute(cellrender, 'text', 1)
+		self.bibliographyEntry.append_column(column)
+		cellrender = gtk.CellRendererText()
+		cellrender.props.wrap_width = 800
+		cellrender.props.wrap_mode = gtk.WRAP_WORD
+		column.pack_start(cellrender, True)
+		column.add_attribute(cellrender, 'text', 2)
+		self.bibliographyEntry.append_column(column)
+		
+		win = gtk.ScrolledWindow()
+		win.add(self.bibliographyEntry)
+		
+		table.attach(win, 1, 2, 1, 2)
 		self.vbox.pack_start(table)
 		
 	def on_bib_changed(self, combobox):
@@ -204,13 +237,12 @@ class InsertBibTexRefDialog(Dialog):
 		self.entryStore.clear()
 		
 		for bla in combobox.get_model()[combobox.get_active()][1].bib_database.get_entry_list():
-			self.entryStore.append([bla['ID']])
-		
+			self.entryStore.append([bla['ID'], bla['author'][0] + " et al.", bla['title']])
 
 	def do_response_ok(self):
 		#self.bibName = self.bibliography.get_model()[self.bibliography.get_active()][0]
 		self.bib = self.bibliography.get_model()[self.bibliography.get_active()][1]
-		self.bibKey = self.bibliographyEntry.get_model()[self.bibliographyEntry.get_active()][0]
+		self.bibKey = self.bibliographyEntry.get_model()[self.bibliographyEntry.get_selection().get_selected()[1]][0]
 		self.result = 1
 		return True
 		
@@ -244,16 +276,47 @@ class BibTexBibObject(CustomObjectClass):
 		self.referenceStore = gtk.ListStore(str, str, str)
 		self.name = attrib['name']
 		self.path = attrib['path']
+		self.fileDir = attrib['filedir']
 		
 		if not BibTexBibObject.bibliographies.has_key(pageview):
 			BibTexBibObject.bibliographies[pageview] = []
 		BibTexBibObject.bibliographies[pageview].append(self)
 		
 		# parse bibtex file	
+		def customizations(record):
+			def getnames(names):
+				tidynames = []
+				for namestring in names:
+					namestring = namestring.strip()
+					if len(namestring) < 1:
+						continue
+					if ',' in namestring:
+						namesplit = namestring.split(',', 1)
+						last = namesplit[0].strip()
+					else:
+						namesplit = namestring.split()
+						last = namesplit.pop()
+					if last in ['jnr', 'jr', 'junior']:
+						last = firsts.pop()
+					tidynames.append(last)
+				return tidynames
+
+			def author(record):
+				if "author" in record:
+					if record["author"]:
+						record["author"] = getnames([i.strip() for i in record["author"].replace('\n', ' ').split(" and ")])
+					else:
+						del record["author"]
+				return record
+			record = author(record)
+			return record
+			
 		with open(self.path) as bibtex_file:
 			bibtex_str = bibtex_file.read()
 			
-		self.bib_database = bibtexparser.loads(bibtex_str)
+		parser = BibTexParser()
+		parser.customization = customizations
+		self.bib_database = bibtexparser.loads(bibtex_str, parser=parser)
 		
 	def on_close_page(self, param1, param2, param3):
 		BibTexBibObject.bibliographies.clear()
@@ -294,11 +357,6 @@ class BibTexBibObject(CustomObjectClass):
 		column.pack_start(cellrender, True)
 		column.add_attribute(cellrender, 'text', 2)
 		self.treeview.append_column(column)
-		#column = gtk.TreeViewColumn()
-		#cellrender = gtk.CellRendererText()
-		#column.pack_start(cellrender, True)
-		#column.add_attribute(cellrender, 'text', 3)
-		#self.treeview.append_column(column)
 		
 		box.pack_start(self.treeview)
 		box.show_all()
@@ -306,12 +364,48 @@ class BibTexBibObject(CustomObjectClass):
 		self._widget = CustomObjectBin()
 		self._widget.add(box)
 		
+		self.treeview.connect('button-press-event', self.on_button_pressed)
+		
+	def on_button_pressed(self, treeview, event):
+		if event.button == 3:
+			x = int(event.x)
+			y = int(event.y)
+			pthinfo = treeview.get_path_at_pos(x, y)
+			if pthinfo is not None:
+				time = event.time
+				path, col, cellx, celly = pthinfo
+				treeview.grab_focus()
+				treeview.set_cursor( path, col, 0)
+				
+				bibKey = treeview.get_model()[path][1]
+				fileLink = self.bib_database.entries_dict[bibKey]['file'].split(':')[1]
+				
+				self.popup = gtk.Menu()
+				win = treeview.get_parent_window()
+						
+				item = gtk.MenuItem(_('Open File'))
+				item.connect_after('activate', 
+					lambda o: self.open_file(os.path.join(self.fileDir,fileLink)))
+				self.popup.prepend(item)				
+			
+				self.popup.show_all()
+				self.popup.popup( None, None, None, event.button, time)
+			return True
+			
+	def open_file(self, filepath):
+		if sys.platform.startswith('darwin'):
+		    subprocess.call(('open', filepath))
+		elif os.name == 'nt':
+		    os.startfile(filepath)
+		elif os.name == 'posix':
+		    subprocess.call(('xdg-open', filepath))
+		
 	def register_reference(self, reference):
 		if not self.referenceIds.has_key(reference.bibKey):
 			self.referenceIds[reference.bibKey] = len(self.referenceStore)+1
 			self.references[reference.bibKey] = []
 			#self.referenceStore.append([self.get_reference_id(reference.bibKey), reference.bibKey, self.bib_database.entries_dict[reference.bibKey]['author'], self.bib_database.entries_dict[reference.bibKey]['title']])
-			refString = "%s, %s. %s" % (self.bib_database.entries_dict[reference.bibKey]['author'], self.bib_database.entries_dict[reference.bibKey]['title'], self.bib_database.entries_dict[reference.bibKey]['year'])
+			refString = "%s et al., %s. (%s)." % (self.bib_database.entries_dict[reference.bibKey]['author'][0], self.bib_database.entries_dict[reference.bibKey]['title'], self.bib_database.entries_dict[reference.bibKey]['year'])
 			self.referenceStore.append([self.get_reference_id(reference.bibKey), reference.bibKey, refString])
 			reference.bibliography = self
 			reference.label.set_text("[%d]" % self.referenceIds[reference.bibKey])
