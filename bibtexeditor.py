@@ -144,14 +144,14 @@ class InsertBibTexBibDialog(Dialog):
 			
 	def init_dialog(self, table=None):
 		table = gtk.Table(rows=3,columns=2)
-		table.attach(gtk.Label("Name"), 0, 1, 0, 1)
+		table.attach(gtk.Label("Bibliography Name"), 0, 1, 0, 1)
 		self.bibtexNameEntry = gtk.Entry()
 		table.attach(self.bibtexNameEntry, 1, 2, 0, 1)
-		table.attach(gtk.Label("Path"), 0, 1, 1, 2)
+		table.attach(gtk.Label("Path to bibtex (*.bib) file:"), 0, 1, 1, 2)
 		self.bibtexPathEntry = gtk.Entry()
 		table.attach(self.bibtexPathEntry, 1, 2, 1, 2)
 		
-		table.attach(gtk.Label("File Directory"), 0, 1, 2, 3)
+		table.attach(gtk.Label("File Directory (PDFs)"), 0, 1, 2, 3)
 		self.fileDirEntry = gtk.Entry()
 		table.attach(self.fileDirEntry, 1, 2, 2, 3)
 		self.vbox.pack_start(table)
