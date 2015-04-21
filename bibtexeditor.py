@@ -148,18 +148,24 @@ class InsertBibTexBibDialog(Dialog):
 		self.bibtexNameEntry = gtk.Entry()
 		table.attach(self.bibtexNameEntry, 1, 2, 0, 1)
 		table.attach(gtk.Label("Path to bibtex (*.bib) file:"), 0, 1, 1, 2)
-		self.bibtexPathEntry = gtk.Entry()
+		self.bibtexPathEntry = gtk.FileChooserButton('Select a bibtex file')
+		
+		filter = gtk.FileFilter()
+		filter.add_pattern("*.bib")
+		
+		self.bibtexPathEntry.set_filter(filter)
 		table.attach(self.bibtexPathEntry, 1, 2, 1, 2)
 		
 		table.attach(gtk.Label("File Directory (PDFs)"), 0, 1, 2, 3)
-		self.fileDirEntry = gtk.Entry()
+		self.fileDirEntry = gtk.FileChooserButton('Select the directory containing PDFs')
+		self.fileDirEntry.set_action(gtk.FILE_CHOOSER_ACTION_SELECT_FOLDER)
 		table.attach(self.fileDirEntry, 1, 2, 2, 3)
 		self.vbox.pack_start(table)
 
 	def do_response_ok(self):
 		self.bibName = self.bibtexNameEntry.get_text()
-		self.bibPath = self.bibtexPathEntry.get_text()
-		self.fileDir = self.fileDirEntry.get_text()
+		self.bibPath = self.bibtexPathEntry.get_filename()
+		self.fileDir = self.fileDirEntry.get_filename()
 		self.result = 1
 		return True
 		
@@ -237,7 +243,8 @@ class InsertBibTexRefDialog(Dialog):
 		self.entryStore.clear()
 		
 		for bla in combobox.get_model()[combobox.get_active()][1].bib_database.get_entry_list():
-			self.entryStore.append([bla['ID'], bla['author'][0] + " et al.", bla['title']])
+			if bla.has_key('ID') and bla.has_key('author') and bla.has_key('title'):
+				self.entryStore.append([bla['ID'], bla['author'][0] + " et al.", bla['title']])
 
 	def do_response_ok(self):
 		#self.bibName = self.bibliography.get_model()[self.bibliography.get_active()][0]
@@ -276,7 +283,11 @@ class BibTexBibObject(CustomObjectClass):
 		self.referenceStore = gtk.ListStore(str, str, str)
 		self.name = attrib['name']
 		self.path = attrib['path']
-		self.fileDir = attrib['filedir']
+		
+		if not attrib.has_key('filedir'):
+			self.fileDir = None
+		else:
+			self.fileDir = attrib['filedir']
 		
 		if not BibTexBibObject.bibliographies.has_key(pageview):
 			BibTexBibObject.bibliographies[pageview] = []
@@ -311,12 +322,14 @@ class BibTexBibObject(CustomObjectClass):
 			record = author(record)
 			return record
 			
+		self.parser = BibTexParser()
+		self.parser.customization = customizations
+		self.parse_bibtex_file()
+		
+	def parse_bibtex_file(self):
 		with open(self.path) as bibtex_file:
 			bibtex_str = bibtex_file.read()
-			
-		parser = BibTexParser()
-		parser.customization = customizations
-		self.bib_database = bibtexparser.loads(bibtex_str, parser=parser)
+		self.bib_database = bibtexparser.loads(bibtex_str, parser=self.parser)
 		
 	def on_close_page(self, param1, param2, param3):
 		BibTexBibObject.bibliographies.clear()
@@ -378,15 +391,21 @@ class BibTexBibObject(CustomObjectClass):
 				treeview.set_cursor( path, col, 0)
 				
 				bibKey = treeview.get_model()[path][1]
-				fileLink = self.bib_database.entries_dict[bibKey]['file'].split(':')[1]
-				
+			
 				self.popup = gtk.Menu()
 				win = treeview.get_parent_window()
-						
-				item = gtk.MenuItem(_('Open File'))
+							
+				item = gtk.MenuItem(_('Reparse BibTeX file'))
 				item.connect_after('activate', 
-					lambda o: self.open_file(os.path.join(self.fileDir,fileLink)))
-				self.popup.prepend(item)				
+					lambda o: self.parse_bibtex_file())
+				self.popup.prepend(item)
+					
+				if self.fileDir is not None and self.bib_database.entries_dict[bibKey].has_key('file'):
+					fileLink = self.bib_database.entries_dict[bibKey]['file'].split(':')[1]
+					item = gtk.MenuItem(_('Open File'))
+					item.connect_after('activate', 
+						lambda o: self.open_file(os.path.join(self.fileDir,fileLink)))
+					self.popup.prepend(item)				
 			
 				self.popup.show_all()
 				self.popup.popup( None, None, None, event.button, time)
