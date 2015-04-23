@@ -428,6 +428,7 @@ class BibTexBibObject(CustomObjectClass):
 			self.referenceStore.append([self.get_reference_id(reference.bibKey), reference.bibKey, refString])
 			reference.bibliography = self
 			reference.label.set_text("[%d]" % self.referenceIds[reference.bibKey])
+			#reference.label.set_uri("[%d]" % self.referenceIds[reference.bibKey])
 		self.references[reference.bibKey].append(reference)
 		self.set_modified(True)
 		
@@ -468,6 +469,7 @@ class BibTexRefObject(CustomObjectClass):
 		self.pageview.view.get_buffer().connect_after('delete-range',self.on_delete_range)
 		self.anchor = None
 		self.label = gtk.Label("")
+		#self.label = gtk.LinkButton("")
 		
 		self.bibKey = attrib['bibkey']
 		self.bibliography = bibliography
@@ -494,13 +496,26 @@ class BibTexRefObject(CustomObjectClass):
 	def _init_widget(self):
 		if not self.bibliography is None:
 			self.label.set_text("[%d]" % self.bibliography.get_reference_id(self.bibKey))
+			#self.label.set_uri("[%d]" % self.bibliography.get_reference_id(self.bibKey))
 		else:
 			self.label.set_text("[...]")
+			#self.label.set_uri("[...]")
 		self.label.set_padding(0,0)
 		
 		self._widget = CustomObjectBin()
 		self._widget.set_border_width(0)
+		self._widget.add_events(gtk.gdk.BUTTON_PRESS_MASK)
+		self._widget.connect('button_press_event', self.on_label_clicked)
 		
 		self._widget.add(self.label)
+		
+	def on_label_clicked(self, bla1, bla2):
+		# scroll
+		self.pageview.view.scroll_to_iter(self.pageview.view.get_buffer().get_iter_at_child_anchor(self.bibliography.anchor), within_margin=0)
+		
+		# set selected entry in bib
+		id = self.bibliography.get_reference_id(self.bibKey)
+		self.bibliography.treeview.get_selection().select_path(id-1)
+		self.bibliography.treeview.grab_focus()
 		
 	# TODO: teardown; remove reference from bibliography
