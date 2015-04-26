@@ -420,15 +420,17 @@ class BibTexBibObject(CustomObjectClass):
 		    subprocess.call(('xdg-open', filepath))
 		
 	def register_reference(self, reference):
+		if not self.bib_database.entries_dict.has_key(reference.bibKey):
+			return
+			
 		if not self.referenceIds.has_key(reference.bibKey):
 			self.referenceIds[reference.bibKey] = len(self.referenceStore)+1
 			self.references[reference.bibKey] = []
 			#self.referenceStore.append([self.get_reference_id(reference.bibKey), reference.bibKey, self.bib_database.entries_dict[reference.bibKey]['author'], self.bib_database.entries_dict[reference.bibKey]['title']])
 			refString = "%s et al., %s. (%s)." % (self.bib_database.entries_dict[reference.bibKey]['author'][0], self.bib_database.entries_dict[reference.bibKey]['title'], self.bib_database.entries_dict[reference.bibKey]['year'])
 			self.referenceStore.append([self.get_reference_id(reference.bibKey), reference.bibKey, refString])
-			reference.bibliography = self
-			reference.label.set_text("[%d]" % self.referenceIds[reference.bibKey])
-			#reference.label.set_uri("[%d]" % self.referenceIds[reference.bibKey])
+		reference.bibliography = self
+		reference.label.set_text("[%d]" % self.referenceIds[reference.bibKey])
 		self.references[reference.bibKey].append(reference)
 		self.set_modified(True)
 		
@@ -516,6 +518,7 @@ class BibTexRefObject(CustomObjectClass):
 		# set selected entry in bib
 		id = self.bibliography.get_reference_id(self.bibKey)
 		self.bibliography.treeview.get_selection().select_path(id-1)
-		self.bibliography.treeview.grab_focus()
+		#self.bibliography.treeview.grab_focus()
+		self.bibliography.treeview.click()
 		
 	# TODO: teardown; remove reference from bibliography

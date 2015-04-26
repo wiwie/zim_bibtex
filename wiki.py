@@ -35,7 +35,7 @@ bullet_pattern = u'(?:[\\*\u2022]|\\[[ \\*x]\\]|\\d+\\.|[a-zA-Z]\\.)[\\ \\t]+'
 # object pattern \{\{\{\s*?\S+:.*\n(?:(?:^.*\n)*?)\s*\}\}\}
 
 #bullet_line_re = re.compile(ur'^(\t*)(%s)(.*\n)$' % bullet_pattern)
-bullet_line_re = re.compile(ur'^(\t*)(%s)((?:\{\{\{\s*?\S+:.*\n(?:(?:^.*\n)*?)\s*\}\}\}|.)*\n)$' % bullet_pattern)
+bullet_line_re = re.compile(ur'^(\t*)(%s)((?:\{\{\{\s*?\S+:.*\n(?:(?:^.*\n)*?)\s*\}\}\}|.)*\n)$' % bullet_pattern, re.X | re.U | re.M)
 	# matches list item: prefix, bullet, text
 
 number_bullet_re = re.compile(u'^(\d+|[a-zA-Z])\.$')
@@ -228,7 +228,32 @@ class WikiParser(object):
 		if text.isspace():
 			builder.text(text)
 		else:
-			for block in empty_lines_re.split(text):
+			# see empty_line_re
+			allNewLines = re.finditer(r'((?:^[\ \t]*\n)+)', text, re.X | re.U | re.M)
+			
+			blocks = []
+			startIndex = 0
+			
+			# check each new line
+			for newLine in allNewLines:
+				allObjects = re.finditer(r'''\{\{\{\s*?\S+:.*\n(?:(?:^.*\n)*?)\s*\}\}\}''', text, re.X | re.U | re.M)
+				
+				contained = False
+				
+				for newObj in allObjects:
+					if newObj.start() > newLine.start():
+						break
+						
+					if newObj.start() <= newLine.start() and newObj.end() >= newLine.end():
+						contained = True
+						break
+				
+				if not contained:
+					blocks.append(text[startIndex:newLine.end()])
+					startIndex = newLine.end()
+					
+			#for block in empty_lines_re.split(text):
+			for block in blocks:
 				if not block: # empty string due to split
 					pass
 				elif block.isspace():
@@ -253,7 +278,7 @@ class WikiParser(object):
 		else:
 			attrib = None
 
-		#print(text)
+		#print('%r' % text)
 		#lines = text.splitlines(True)
 		#lines = re.split(r'''(?:\{\{\{ \s*? \S+:.*\n(?: (?:^.*\n)*? )\}\}\}\s*?)*?\n''', text)
 		lines = []
@@ -263,7 +288,7 @@ class WikiParser(object):
 		startIndex = 0
 		# check each new line
 		for newLine in allNewLines:
-			allObjects = re.finditer(r'''\{\{\{\s*?\S+:.*\n(?:(?:^.*\n)*?)\s*\}\}\}''', text)
+			allObjects = re.finditer(r'''\{\{\{\s*?\S+:.*\n(?:(?:^.*\n)*?)\s*\}\}\}''', text, re.X | re.U | re.M)
 			
 			contained = False
 			
@@ -284,7 +309,6 @@ class WikiParser(object):
 		#	startIndex = group.end()
 			
 		#lines = re.split(r'''\n''', text)
-		print(lines)
 		self.parse_list_lines(builder, lines, 0, attrib)
 
 	def parse_list_lines(self, builder, lines, level, attrib=None):
